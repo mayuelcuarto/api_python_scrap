@@ -39,13 +39,15 @@ def get_match_stats(url: str):
         
         # Intentar hacer clic en la pestaña "Estadísticas"
         try:
-            # Buscamos por texto tanto en DIV como en SPAN para mayor compatibilidad
-            xpath_stats = "//div[contains(text(), 'Estadísticas')] | //span[contains(text(), 'Estadísticas')]"
+            # Buscamos de forma más flexible y esperamos a que sea clickable
+            xpath_stats = "//div[contains(., 'Estadísticas')] | //span[contains(., 'Estadísticas')] | //a[contains(., 'Estadísticas')]"
             boton_stats = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_stats)))
             driver.execute_script("arguments[0].click();", boton_stats)
-            time.sleep(2) # Espera para el renderizado de la pestaña
+            # En lugar de sleep fijo, esperamos a que aparezca un elemento clave de las estadísticas
+            wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(., 'Remates al arco')] | //div[contains(., 'Faltas')]")))
         except Exception:
             pass # Si falla el clic, intentamos extraer lo que sea visible
+            print("No se pudo hacer clic en la pestaña de estadísticas o no cargó a tiempo.")
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         results = {}
@@ -106,7 +108,14 @@ def get_match_stats(url: str):
                     results[f"{key_base}_equipo1"] = partes[0]
                     results[f"{key_base}_equipo2"] = partes[-1]
                 else:
-                    results[key_base] = " | ".join(partes)
+                    # Si no hay 3 partes, buscamos un patrón numérico tipo "10 - 5" en el texto unido
+                    texto_unido = " ".join(partes)
+                    match_stats = re.search(r"(\d+)\s*[-–]\s*(\d+)", texto_unido)
+                    if match_stats:
+                        results[f"{key_base}_equipo1"] = match_stats.group(1)
+                        results[f"{key_base}_equipo2"] = match_stats.group(2)
+                    else:
+                        results[key_base] = " | ".join(partes)
             else:
                 results[f"{key_base}_equipo1"] = "0"
                 results[f"{key_base}_equipo2"] = "0"
