@@ -44,7 +44,7 @@ def get_match_stats(url: str):
             boton_stats = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_stats)))
             driver.execute_script("arguments[0].click();", boton_stats)
             # En lugar de sleep fijo, esperamos a que aparezca un elemento clave de las estadísticas
-            wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(., 'Remates al arco')] | //div[contains(., 'Faltas')]")))
+            wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(., 'Grandes chances perdidas')] | //div[contains(., 'Faltas')]")))
         except Exception:
             pass # Si falla el clic, intentamos extraer lo que sea visible
             print("No se pudo hacer clic en la pestaña de estadísticas o no cargó a tiempo.")
