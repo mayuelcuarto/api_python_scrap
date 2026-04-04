@@ -80,8 +80,10 @@ def get_match_stats(url: str):
             results["score_equipo2"] = "N/A"
 
         stats_interes = [
+            "Goles esperados",
             "Total Remates",
             "Remates al arco",
+            "Grandes chances",
             "Saques de esquina",
             "Salvadas de Portero",
             "Faltas",
