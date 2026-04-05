@@ -73,11 +73,11 @@ def get_match_stats(url: str):
                     results["score_equipo2"] = numeros[1]
             
             if "score_equipo1" not in results:
-                results["score_equipo1"] = "N/A"
-                results["score_equipo2"] = "N/A"
+                results["score_equipo1"] = "-1"
+                results["score_equipo2"] = "-1"
         except Exception:
-            results["score_equipo1"] = "N/A"
-            results["score_equipo2"] = "N/A"
+            results["score_equipo1"] = "-1"
+            results["score_equipo2"] = "-1"
 
         stats_interes = [
             "Goles esperados",
@@ -92,35 +92,38 @@ def get_match_stats(url: str):
             "Tarjetas Rojas"
         ]
 
-        for stat in stats_interes:
-            # Búsqueda estricta usando regex
-            pattern = re.compile(rf"^\s*{re.escape(stat)}\s*$", re.IGNORECASE)
-            stat_node = soup.find(string=pattern)
-            
-            # Generamos la clave base en formato snake_case (ej: "total_remates")
-            key_base = stat.lower().replace(" ", "_")
+        # Buscamos todos los SPANs dentro del contenedor de estadísticas
+        all_spans = soup.find_all("span")
 
-            if stat_node:
-                fila_stat = stat_node.find_parent()
-                # Obtenemos los textos individuales (valor local, nombre stat, valor visitante)
-                # Usamos un separador interno para dividir la fila de forma segura
-                partes = [p.strip() for p in fila_stat.get_text(separator='|', strip=True).split('|')]
+        for stat_name in stats_interes:
+            key_base = stat_name.lower().replace(" ", "_")
+            found = False
+
+            # Creamos un regex flexible para los espacios y saltos de línea internos
+            # Esto soluciona lo de "Remates al       arco"
+            stat_regex = re.escape(stat_name).replace(r'\ ', r'\s+')
+            pattern = re.compile(stat_regex, re.IGNORECASE)
+
+            for span in all_spans:
+                # get_text(separator=" ") une el texto antes y después del <br /> con un espacio
+                text_content = span.get_text(separator=" ", strip=True)
                 
-                if len(partes) >= 3:
-                    results[f"{key_base}_equipo1"] = partes[0]
-                    results[f"{key_base}_equipo2"] = partes[-1]
-                else:
-                    # Si no hay 3 partes, buscamos un patrón numérico tipo "10 - 5" en el texto unido
-                    texto_unido = " ".join(partes)
-                    match_stats = re.search(r"(\d+)\s*[-–]\s*(\d+)", texto_unido)
-                    if match_stats:
-                        results[f"{key_base}_equipo1"] = match_stats.group(1)
-                        results[f"{key_base}_equipo2"] = match_stats.group(2)
-                    else:
-                        results[key_base] = " | ".join(partes)
-            else:
-                results[f"{key_base}_equipo1"] = "0"
-                results[f"{key_base}_equipo2"] = "0"
+                if pattern.search(text_content):
+                    # Buscamos los números (incluyendo decimales como 2.5)
+                    # El regex busca grupos de números separados por guion, espacios o barra
+                    # Ejemplo: "Remates al arco 7 - 5" -> ["7", "5"]
+                    numbers = re.findall(r"(\d+\.?\d*)", text_content)
+                    
+                    if len(numbers) >= 2:
+                        # En Scores, el primer número es Local, el segundo es Visitante
+                        results[f"{key_base}_equipo1"] = numbers[0]
+                        results[f"{key_base}_equipo2"] = numbers[1]
+                        found = True
+                        break
+            
+            if not found:
+                results[f"{key_base}_equipo1"] = "-1"
+                results[f"{key_base}_equipo2"] = "-1"
 
         return results
 
