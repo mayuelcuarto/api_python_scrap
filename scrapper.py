@@ -89,14 +89,20 @@ def get_match_stats(url: str):
             "Faltas",
             "Faltas recibidas",
             "Tarjetas Amarillas",
-            "Tarjetas Rojas"
+            "Tarjetas Rojas",
+            "Posesión",
+            "Pases completados",
+            "Pases en el propio campo",
+            "Pases en el campo contrario",
         ]
 
         # Buscamos todos los SPANs dentro del contenedor de estadísticas
         all_spans = soup.find_all("span")
 
         for stat_name in stats_interes:
-            key_base = stat_name.lower().replace(" ", "_")
+            # Diccionario de reemplazo rápido
+            trans = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
+            key_base = stat_name.translate(trans).lower().replace(" ", "_")
             found = False
 
             # Creamos un regex flexible para los espacios y saltos de línea internos
