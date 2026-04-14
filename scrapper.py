@@ -107,7 +107,10 @@ def get_match_stats(url: str):
 
             # Creamos un regex flexible para los espacios y saltos de línea internos
             # Esto soluciona lo de "Remates al       arco"
-            stat_regex = re.escape(stat_name).replace(r'\ ', r'\s+')
+            # Usamos \b para límites de palabra y un lookahead negativo (?!\s*[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ])
+            # para evitar que "Faltas" coincida con "Faltas recibidas"
+            escaped_name = re.escape(stat_name).replace(r'\ ', r'\s+')
+            stat_regex = fr"\b{escaped_name}\b(?!\s*[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ])"
             pattern = re.compile(stat_regex, re.IGNORECASE)
 
             for span in all_spans:
