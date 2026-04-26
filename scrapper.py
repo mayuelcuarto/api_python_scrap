@@ -11,8 +11,17 @@ from bs4 import BeautifulSoup
 import time
 import re
 import uvicorn
+from threading import Semaphore
 
 app = FastAPI(title="Soccer Scraper API")
+
+# Limitar el número de navegadores abiertos simultáneamente (ajusta según tu RAM)
+MAX_CONCURRENT_SCRAPERS = 3
+scraper_semaphore = Semaphore(MAX_CONCURRENT_SCRAPERS)
+
+# Instalar el driver una sola vez al inicio para mejorar rendimiento
+CHROME_DRIVER_PATH = ChromeDriverManager().install()
+chrome_service = Service(CHROME_DRIVER_PATH)
 
 # Configuración de CORS para permitir peticiones desde Angular (habitualmente puerto 4200)
 app.add_middleware(
@@ -34,10 +43,10 @@ def get_match_stats(url: str):
     chrome_options.add_experimental_option('useAutomationExtension', False)
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
+    # Usamos el servicio pre-configurado
+    driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
     try:
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         driver.get(url)
         wait = WebDriverWait(driver, 20) # Aumentamos un poco el margen
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
@@ -149,11 +158,13 @@ def stats_endpoint(url: str = Query(..., description="URL de Scores")):
     """
     Recibe la URL de un partido y devuelve un JSON con las estadísticas.
     """
-    try:
-        data = get_match_stats(url)
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # El semáforo asegura que solo N hilos entren aquí a la vez, el resto espera
+    with scraper_semaphore:
+        try:
+            data = get_match_stats(url)
+            return data
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 def health():
