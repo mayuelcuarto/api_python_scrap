@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -11,13 +11,31 @@ from bs4 import BeautifulSoup
 import time
 import re
 import uvicorn
+import numpy as np
+from scipy.stats import poisson
 from threading import Semaphore
+from pydantic import BaseModel
+from typing import List
 
 app = FastAPI(title="Soccer Scraper API")
 
 # Limitar el número de navegadores abiertos simultáneamente (ajusta según tu RAM)
 MAX_CONCURRENT_SCRAPERS = 3
 scraper_semaphore = Semaphore(MAX_CONCURRENT_SCRAPERS)
+
+# Modelos de datos para la predicción
+class HistoricoPartido(BaseModel):
+    goles: float
+    goles_recibidos: float
+    remates: float
+    remates_recibidos: float
+    corners: float
+    corners_recibidos: float
+    posesion: float
+
+class DatosPrediccion(BaseModel):
+    equipo_local: List[HistoricoPartido]
+    equipo_visitante: List[HistoricoPartido]
 
 # Instalar el driver una sola vez al inicio para mejorar rendimiento
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
@@ -152,6 +170,59 @@ def get_match_stats(url: str):
 
     finally:
         driver.quit()
+
+@app.post("/api/predict")
+def predict_match(data: DatosPrediccion):
+    """
+    Realiza una predicción heurística basada en los últimos 10 partidos.
+    """
+    def get_averages(history: List[HistoricoPartido]):
+        return {
+            "goles_f": np.mean([h.goles for h in history]),
+            "goles_c": np.mean([h.goles_recibidos for h in history]),
+            "remates_f": np.mean([h.remates for h in history]),
+            "remates_c": np.mean([h.remates_recibidos for h in history]),
+            "corners_f": np.mean([h.corners for h in history]),
+            "corners_c": np.mean([h.corners_recibidos for h in history]),
+        }
+
+    avg_l = get_averages(data.equipo_local)
+    avg_v = get_averages(data.equipo_visitante)
+
+    # Heurística: xG (Goles Esperados) simplificado
+    # El xG de un equipo es el promedio entre lo que anota y lo que el rival recibe
+    mu_local = (avg_l["goles_f"] + avg_v["goles_c"]) / 2
+    mu_visitante = (avg_v["goles_f"] + avg_l["goles_c"]) / 2
+
+    # Distribución de Poisson para probabilidades de resultado (0 a 5 goles)
+    max_goles = 6
+    prob_matrix = np.outer(
+        poisson.pmf(range(max_goles), mu_local),
+        poisson.pmf(range(max_goles), mu_visitante)
+    )
+
+    prob_local = np.sum(np.tril(prob_matrix, -1))
+    prob_empate = np.sum(np.diag(prob_matrix))
+    prob_visitante = np.sum(np.triu(prob_matrix, 1))
+    
+    # Predicción de remates y corners (Promedio simple de producción y concesión)
+    pred_remates_total = (avg_l["remates_f"] + avg_l["remates_c"] + avg_v["remates_f"] + avg_v["remates_c"]) / 2
+    pred_corners_total = (avg_l["corners_f"] + avg_l["corners_c"] + avg_v["corners_f"] + avg_v["corners_c"]) / 2
+
+    res_idx = np.unravel_index(prob_matrix.argmax(), prob_matrix.shape)
+
+    return {
+        "probabilidades": {
+            "local": round(float(prob_local) * 100, 2),
+            "empate": round(float(prob_empate) * 100, 2),
+            "visitante": round(float(prob_visitante) * 100, 2)
+        },
+        "marcador_probable": f"{res_idx[0]} - {res_idx[1]}",
+        "prediccion_remates_totales": round(float(pred_remates_total), 1),
+        "prediccion_corners_totales": round(float(pred_corners_total), 1),
+        "fuerza_ataque_local": round(mu_local, 2),
+        "fuerza_ataque_visitante": round(mu_visitante, 2)
+    }
 
 @app.get("/api/stats")
 def stats_endpoint(url: str = Query(..., description="URL de Scores")):
