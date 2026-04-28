@@ -32,6 +32,7 @@ class HistoricoPartido(BaseModel):
     corners: float
     corners_recibidos: float
     posesion: float
+    es_local: bool  # Indica si el equipo jugó en casa en ese partido histórico
 
 class DatosPrediccion(BaseModel):
     equipo_local: List[HistoricoPartido]
@@ -174,20 +175,32 @@ def get_match_stats(url: str):
 @app.post("/api/predict")
 def predict_match(data: DatosPrediccion):
     """
-    Realiza una predicción heurística basada en los últimos 10 partidos.
+    Realiza una predicción heurística basada en los últimos partidos,
+    diferenciando el rendimiento según la fortaleza de local y visita.
     """
-    def get_averages(history: List[HistoricoPartido]):
+    def get_averages(history: List[HistoricoPartido], filtro_local: bool = None):
+        # Intentamos filtrar partidos por condición de local/visita
+        if filtro_local is not None:
+            subset = [h for h in history if h.es_local == filtro_local]
+            # Si hay datos suficientes (mínimo 2 partidos), usamos el filtro específico
+            if len(subset) >= 2:
+                history = subset
+
+        if not history:
+            return {k: 0.0 for k in ["goles_f", "goles_c", "remates_f", "remates_c", "corners_f", "corners_c"]}
+
         return {
-            "goles_f": np.mean([h.goles for h in history]),
-            "goles_c": np.mean([h.goles_recibidos for h in history]),
-            "remates_f": np.mean([h.remates for h in history]),
-            "remates_c": np.mean([h.remates_recibidos for h in history]),
-            "corners_f": np.mean([h.corners for h in history]),
-            "corners_c": np.mean([h.corners_recibidos for h in history]),
+            "goles_f": float(np.mean([h.goles for h in history])),
+            "goles_c": float(np.mean([h.goles_recibidos for h in history])),
+            "remates_f": float(np.mean([h.remates for h in history])),
+            "remates_c": float(np.mean([h.remates_recibidos for h in history])),
+            "corners_f": float(np.mean([h.corners for h in history])),
+            "corners_c": float(np.mean([h.corners_recibidos for h in history])),
         }
 
-    avg_l = get_averages(data.equipo_local)
-    avg_v = get_averages(data.equipo_visitante)
+    # Calculamos promedios específicos: local en casa y visitante fuera de casa
+    avg_l = get_averages(data.equipo_local, filtro_local=True)
+    avg_v = get_averages(data.equipo_visitante, filtro_local=False)
 
     # Heurística: xG (Goles Esperados) simplificado
     # El xG de un equipo es el promedio entre lo que anota y lo que el rival recibe
