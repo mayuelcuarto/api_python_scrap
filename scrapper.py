@@ -29,6 +29,8 @@ class HistoricoPartido(BaseModel):
     goles_recibidos: float
     remates: float
     remates_recibidos: float
+    remates_al_arco: float
+    remates_al_arco_recibidos: float
     corners: float
     corners_recibidos: float
     posesion: float
@@ -187,13 +189,15 @@ def predict_match(data: DatosPrediccion):
                 history = subset
 
         if not history:
-            return {k: 0.0 for k in ["goles_f", "goles_c", "remates_f", "remates_c", "corners_f", "corners_c"]}
+            return {k: 0.0 for k in ["goles_f", "goles_c", "remates_f", "remates_c", "remates_arco_f", "remates_arco_c", "corners_f", "corners_c"]}
 
         return {
             "goles_f": float(np.mean([h.goles for h in history])),
             "goles_c": float(np.mean([h.goles_recibidos for h in history])),
             "remates_f": float(np.mean([h.remates for h in history])),
             "remates_c": float(np.mean([h.remates_recibidos for h in history])),
+            "remates_arco_f": float(np.mean([h.remates_al_arco for h in history])),
+            "remates_arco_c": float(np.mean([h.remates_al_arco_recibidos for h in history])),
             "corners_f": float(np.mean([h.corners for h in history])),
             "corners_c": float(np.mean([h.corners_recibidos for h in history])),
         }
@@ -207,6 +211,14 @@ def predict_match(data: DatosPrediccion):
     mu_local = (avg_l["goles_f"] + avg_v["goles_c"]) / 2
     mu_visitante = (avg_v["goles_f"] + avg_l["goles_c"]) / 2
 
+    # Predicciones detalladas por equipo (producción propia + concesión rival) / 2
+    rem_l = (avg_l["remates_f"] + avg_v["remates_c"]) / 2
+    rem_v = (avg_v["remates_f"] + avg_l["remates_c"]) / 2
+    arco_l = (avg_l["remates_arco_f"] + avg_v["remates_arco_c"]) / 2
+    arco_v = (avg_v["remates_arco_f"] + avg_l["remates_arco_c"]) / 2
+    corn_l = (avg_l["corners_f"] + avg_v["corners_c"]) / 2
+    corn_v = (avg_v["corners_f"] + avg_l["corners_c"]) / 2
+
     # Distribución de Poisson para probabilidades de resultado (0 a 5 goles)
     max_goles = 6
     prob_matrix = np.outer(
@@ -217,11 +229,6 @@ def predict_match(data: DatosPrediccion):
     prob_local = np.sum(np.tril(prob_matrix, -1))
     prob_empate = np.sum(np.diag(prob_matrix))
     prob_visitante = np.sum(np.triu(prob_matrix, 1))
-    
-    # Predicción de remates y corners (Promedio simple de producción y concesión)
-    pred_remates_total = (avg_l["remates_f"] + avg_l["remates_c"] + avg_v["remates_f"] + avg_v["remates_c"]) / 2
-    pred_corners_total = (avg_l["corners_f"] + avg_l["corners_c"] + avg_v["corners_f"] + avg_v["corners_c"]) / 2
-
     res_idx = np.unravel_index(prob_matrix.argmax(), prob_matrix.shape)
 
     return {
@@ -231,8 +238,21 @@ def predict_match(data: DatosPrediccion):
             "visitante": round(float(prob_visitante) * 100, 2)
         },
         "marcador_probable": f"{res_idx[0]} - {res_idx[1]}",
-        "prediccion_remates_totales": round(float(pred_remates_total), 1),
-        "prediccion_corners_totales": round(float(pred_corners_total), 1),
+        "prediccion_remates_totales": round(float(rem_l + rem_v), 1),
+        "prediccion_remates_al_arco": round(float(arco_l + arco_v), 1),
+        "prediccion_corners_totales": round(float(corn_l + corn_v), 1),
+        "detalle_por_equipo": {
+            "local": {
+                "remates": round(rem_l, 1),
+                "remates_al_arco": round(arco_l, 1),
+                "corners": round(corn_l, 1)
+            },
+            "visitante": {
+                "remates": round(rem_v, 1),
+                "remates_al_arco": round(arco_v, 1),
+                "corners": round(corn_v, 1)
+            }
+        },
         "fuerza_ataque_local": round(mu_local, 2),
         "fuerza_ataque_visitante": round(mu_visitante, 2)
     }
