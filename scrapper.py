@@ -34,6 +34,12 @@ class HistoricoPartido(BaseModel):
     corners: float
     corners_recibidos: float
     posesion: float
+    faltas: float
+    faltas_recibidas: float
+    tarjetas_amarillas: float
+    tarjetas_amarillas_contrarias: float
+    tarjetas_rojas: float
+    tarjetas_rojas_contrarias: float
     es_local: bool  # Indica si el equipo jugó en casa en ese partido histórico
 
 class DatosPrediccion(BaseModel):
@@ -189,7 +195,11 @@ def predict_match(data: DatosPrediccion):
                 history = subset
 
         if not history:
-            return {k: 0.0 for k in ["goles_f", "goles_c", "remates_f", "remates_c", "remates_arco_f", "remates_arco_c", "corners_f", "corners_c"]}
+            return {k: 0.0 for k in [
+                "goles_f", "goles_c", "remates_f", "remates_c", "remates_arco_f", "remates_arco_c", 
+                "corners_f", "corners_c", "faltas_f", "faltas_c", 
+                "amarillas_f", "amarillas_c", "rojas_f", "rojas_c"
+            ]}
 
         return {
             "goles_f": float(np.mean([h.goles for h in history])),
@@ -200,6 +210,12 @@ def predict_match(data: DatosPrediccion):
             "remates_arco_c": float(np.mean([h.remates_al_arco_recibidos for h in history])),
             "corners_f": float(np.mean([h.corners for h in history])),
             "corners_c": float(np.mean([h.corners_recibidos for h in history])),
+            "faltas_f": float(np.mean([h.faltas for h in history])),
+            "faltas_c": float(np.mean([h.faltas_recibidas for h in history])),
+            "amarillas_f": float(np.mean([h.tarjetas_amarillas for h in history])),
+            "amarillas_c": float(np.mean([h.tarjetas_amarillas_contrarias for h in history])),
+            "rojas_f": float(np.mean([h.tarjetas_rojas for h in history])),
+            "rojas_c": float(np.mean([h.tarjetas_rojas_contrarias for h in history])),
         }
 
     # Calculamos promedios específicos: local en casa y visitante fuera de casa
@@ -218,6 +234,12 @@ def predict_match(data: DatosPrediccion):
     arco_v = (avg_v["remates_arco_f"] + avg_l["remates_arco_c"]) / 2
     corn_l = (avg_l["corners_f"] + avg_v["corners_c"]) / 2
     corn_v = (avg_v["corners_f"] + avg_l["corners_c"]) / 2
+    faltas_l = (avg_l["faltas_f"] + avg_v["faltas_c"]) / 2
+    faltas_v = (avg_v["faltas_f"] + avg_l["faltas_c"]) / 2
+    amarillas_l = (avg_l["amarillas_f"] + avg_v["amarillas_c"]) / 2
+    amarillas_v = (avg_v["amarillas_f"] + avg_l["amarillas_c"]) / 2
+    rojas_l = (avg_l["rojas_f"] + avg_v["rojas_c"]) / 2
+    rojas_v = (avg_v["rojas_v"] if "rojas_v" in avg_v else 0.0 + avg_l["rojas_c"]) / 2 # Fallback simple
 
     # Distribución de Poisson para probabilidades de resultado (0 a 5 goles)
     max_goles = 6
@@ -240,17 +262,25 @@ def predict_match(data: DatosPrediccion):
         "marcador_probable": f"{res_idx[0]} - {res_idx[1]}",
         "prediccion_remates_totales": round(float(rem_l + rem_v), 1),
         "prediccion_remates_al_arco": round(float(arco_l + arco_v), 1),
+        "prediccion_faltas_totales": round(float(faltas_l + faltas_v), 1),
+        "prediccion_tarjetas_amarillas_totales": round(float(amarillas_l + amarillas_v), 1),
         "prediccion_corners_totales": round(float(corn_l + corn_v), 1),
         "detalle_por_equipo": {
             "local": {
                 "remates": round(rem_l, 1),
                 "remates_al_arco": round(arco_l, 1),
-                "corners": round(corn_l, 1)
+                "corners": round(corn_l, 1),
+                "faltas": round(faltas_l, 1),
+                "tarjetas_amarillas": round(amarillas_l, 1),
+                "tarjetas_rojas": round(rojas_l, 2)
             },
             "visitante": {
                 "remates": round(rem_v, 1),
                 "remates_al_arco": round(arco_v, 1),
-                "corners": round(corn_v, 1)
+                "corners": round(corn_v, 1),
+                "faltas": round(faltas_v, 1),
+                "tarjetas_amarillas": round(amarillas_v, 1),
+                "tarjetas_rojas": round(rojas_v, 2)
             }
         },
         "fuerza_ataque_local": round(mu_local, 2),
