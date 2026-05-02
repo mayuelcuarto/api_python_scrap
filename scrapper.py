@@ -239,7 +239,14 @@ def predict_match(data: DatosPrediccion):
     amarillas_l = (avg_l["amarillas_f"] + avg_v["amarillas_c"]) / 2
     amarillas_v = (avg_v["amarillas_f"] + avg_l["amarillas_c"]) / 2
     rojas_l = (avg_l["rojas_f"] + avg_v["rojas_c"]) / 2
-    rojas_v = (avg_v["rojas_v"] if "rojas_v" in avg_v else 0.0 + avg_l["rojas_c"]) / 2 # Fallback simple
+    rojas_v = (avg_v["rojas_f"] + avg_l["rojas_c"]) / 2
+
+    mu_total_goles = mu_local + mu_visitante
+    mu_total_remates = rem_l + rem_v
+    mu_total_arco = arco_l + arco_v
+    mu_total_corners = corn_l + corn_v
+    mu_total_faltas = faltas_l + faltas_v
+    mu_total_amarillas = amarillas_l + amarillas_v
 
     # Distribución de Poisson para probabilidades de resultado (0 a 5 goles)
     max_goles = 6
@@ -253,18 +260,82 @@ def predict_match(data: DatosPrediccion):
     prob_visitante = np.sum(np.triu(prob_matrix, 1))
     res_idx = np.unravel_index(prob_matrix.argmax(), prob_matrix.shape)
 
+    # Probabilidades de goles adicionales
+    prob_mas_1_5 = 1 - poisson.cdf(1, mu_total_goles)
+    prob_mas_2_5 = 1 - poisson.cdf(2, mu_total_goles)
+    prob_ambos_marcan = (1 - poisson.pmf(0, mu_local)) * (1 - poisson.pmf(0, mu_visitante))
+
+    # Probabilidad de que se cumplan los totales estimados (probabilidad de Over "media - 0.5")
+    # Por ejemplo, si la media es 9.2, calculamos P(X >= 9)
+    prob_remates_over = 1 - poisson.cdf(int(mu_total_remates) - 1, mu_total_remates)
+    prob_arco_over = 1 - poisson.cdf(int(mu_total_arco) - 1, mu_total_arco)
+    prob_corners_over = 1 - poisson.cdf(int(mu_total_corners) - 1, mu_total_corners)
+    prob_faltas_over = 1 - poisson.cdf(int(mu_total_faltas) - 1, mu_total_faltas)
+
+    # Cálculo de "Líneas Seguras" (aproximándonos al 70-75% de probabilidad)
+    # Restamos un margen al entero de la media para ganar confianza estadística
+    prob_remates_safe = 1 - poisson.cdf(max(0, int(mu_total_remates) - 2), mu_total_remates)
+    prob_arco_safe = 1 - poisson.cdf(max(0, int(mu_total_arco) - 2), mu_total_arco)
+    prob_corners_safe = 1 - poisson.cdf(max(0, int(mu_total_corners) - 2), mu_total_corners)
+    prob_faltas_safe = 1 - poisson.cdf(max(0, int(mu_total_faltas) - 2), mu_total_faltas)
+
+    # Cálculos individuales seguros (Local y Visita)
+    prob_rem_l_safe = 1 - poisson.cdf(max(0, int(rem_l) - 2), rem_l)
+    prob_rem_v_safe = 1 - poisson.cdf(max(0, int(rem_v) - 2), rem_v)
+    prob_arco_l_safe = 1 - poisson.cdf(max(0, int(arco_l) - 2), arco_l)
+    prob_arco_v_safe = 1 - poisson.cdf(max(0, int(arco_v) - 2), arco_v)
+    prob_corn_l_safe = 1 - poisson.cdf(max(0, int(corn_l) - 2), corn_l)
+    prob_corn_v_safe = 1 - poisson.cdf(max(0, int(corn_v) - 2), corn_v)
+    prob_faltas_l_safe = 1 - poisson.cdf(max(0, int(faltas_l) - 2), faltas_l)
+    prob_faltas_v_safe = 1 - poisson.cdf(max(0, int(faltas_v) - 2), faltas_v)
+
     return {
         "probabilidades": {
             "local": round(float(prob_local) * 100, 2),
             "empate": round(float(prob_empate) * 100, 2),
             "visitante": round(float(prob_visitante) * 100, 2)
         },
+        "probabilidades_pronosticos": {
+            "mas_de_1_5_goles": round(float(prob_mas_1_5) * 100, 2),
+            "mas_de_2_5_goles": round(float(prob_mas_2_5) * 100, 2),
+            "ambos_marcan": round(float(prob_ambos_marcan) * 100, 2),
+            "cumplir_estimacion_remates": round(float(prob_remates_over) * 100, 2),
+            "cumplir_estimacion_corners": round(float(prob_corners_over) * 100, 2),
+            "cumplir_estimacion_faltas": round(float(prob_faltas_over) * 100, 2),
+            "cumplir_estimacion_remates_al_arco": round(float(prob_arco_over) * 100, 2)
+        },
+        "pronosticos_seguros": {
+            "remates_totales_exito_70plus": f"Mas de {max(0, int(mu_total_remates) - 1.5)}",
+            "prob_remates_seguro": round(float(prob_remates_safe) * 100, 2),
+            "remates_local_exito_70plus": f"Mas de {max(0, int(rem_l) - 1.5)}",
+            "prob_remates_local_seguro": round(float(prob_rem_l_safe) * 100, 2),
+            "remates_visitante_exito_70plus": f"Mas de {max(0, int(rem_v) - 1.5)}",
+            "prob_remates_visitante_seguro": round(float(prob_rem_v_safe) * 100, 2),
+            "corners_totales_exito_70plus": f"Mas de {max(0, int(mu_total_corners) - 1.5)}",
+            "prob_corners_seguro": round(float(prob_corners_safe) * 100, 2),
+            "corners_local_exito_70plus": f"Mas de {max(0, int(corn_l) - 1.5)}",
+            "prob_corners_local_seguro": round(float(prob_corn_l_safe) * 100, 2),
+            "corners_visitante_exito_70plus": f"Mas de {max(0, int(corn_v) - 1.5)}",
+            "prob_corners_visitante_seguro": round(float(prob_corn_v_safe) * 100, 2),
+            "remates_al_arco_exito_70plus": f"Mas de {max(0, int(mu_total_arco) - 1.5)}",
+            "prob_arco_seguro": round(float(prob_arco_safe) * 100, 2),
+            "remates_al_arco_local_exito_70plus": f"Mas de {max(0, int(arco_l) - 1.5)}",
+            "prob_arco_local_seguro": round(float(prob_arco_l_safe) * 100, 2),
+            "remates_al_arco_visitante_exito_70plus": f"Mas de {max(0, int(arco_v) - 1.5)}",
+            "prob_arco_visitante_seguro": round(float(prob_arco_v_safe) * 100, 2),
+            "faltas_totales_exito_70plus": f"Mas de {max(0, int(mu_total_faltas) - 1.5)}",
+            "prob_faltas_seguro": round(float(prob_faltas_safe) * 100, 2),
+            "faltas_local_exito_70plus": f"Mas de {max(0, int(faltas_l) - 1.5)}",
+            "prob_faltas_local_seguro": round(float(prob_faltas_l_safe) * 100, 2),
+            "faltas_visitante_exito_70plus": f"Mas de {max(0, int(faltas_v) - 1.5)}",
+            "prob_faltas_visitante_seguro": round(float(prob_faltas_v_safe) * 100, 2)
+        },
         "marcador_probable": f"{res_idx[0]} - {res_idx[1]}",
-        "prediccion_remates_totales": round(float(rem_l + rem_v), 1),
+        "prediccion_remates_totales": round(float(mu_total_remates), 1),
         "prediccion_remates_al_arco": round(float(arco_l + arco_v), 1),
-        "prediccion_faltas_totales": round(float(faltas_l + faltas_v), 1),
-        "prediccion_tarjetas_amarillas_totales": round(float(amarillas_l + amarillas_v), 1),
-        "prediccion_corners_totales": round(float(corn_l + corn_v), 1),
+        "prediccion_faltas_totales": round(float(mu_total_faltas), 1),
+        "prediccion_tarjetas_amarillas_totales": round(float(mu_total_amarillas), 1),
+        "prediccion_corners_totales": round(float(mu_total_corners), 1),
         "detalle_por_equipo": {
             "local": {
                 "remates": round(rem_l, 1),
