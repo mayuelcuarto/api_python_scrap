@@ -263,6 +263,8 @@ def predict_match(data: DatosPrediccion):
     # Probabilidades de goles adicionales
     prob_mas_1_5 = 1 - poisson.cdf(1, mu_total_goles)
     prob_mas_2_5 = 1 - poisson.cdf(2, mu_total_goles)
+    prob_menos_3_5 = poisson.cdf(3, mu_total_goles)
+    prob_menos_4_5 = poisson.cdf(4, mu_total_goles)
     prob_ambos_marcan = (1 - poisson.pmf(0, mu_local)) * (1 - poisson.pmf(0, mu_visitante))
 
     # Probabilidad de que se cumplan los totales estimados (probabilidad de Over "media - 0.5")
@@ -298,6 +300,8 @@ def predict_match(data: DatosPrediccion):
         "probabilidades_pronosticos": {
             "mas_de_1_5_goles": round(float(prob_mas_1_5) * 100, 2),
             "mas_de_2_5_goles": round(float(prob_mas_2_5) * 100, 2),
+            "menos_de_3_5_goles": round(float(prob_menos_3_5) * 100, 2),
+            "menos_de_4_5_goles": round(float(prob_menos_4_5) * 100, 2),
             "ambos_marcan": round(float(prob_ambos_marcan) * 100, 2),
             "cumplir_estimacion_remates": round(float(prob_remates_over) * 100, 2),
             "cumplir_estimacion_corners": round(float(prob_corners_over) * 100, 2),
