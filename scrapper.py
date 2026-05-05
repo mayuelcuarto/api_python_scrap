@@ -273,6 +273,7 @@ def predict_match(data: DatosPrediccion):
     prob_arco_over = 1 - poisson.cdf(int(mu_total_arco) - 1, mu_total_arco)
     prob_corners_over = 1 - poisson.cdf(int(mu_total_corners) - 1, mu_total_corners)
     prob_faltas_over = 1 - poisson.cdf(int(mu_total_faltas) - 1, mu_total_faltas)
+    prob_amarillas_over = 1 - poisson.cdf(max(0, int(mu_total_amarillas) - 1), mu_total_amarillas)
 
     # Cálculo de "Líneas Seguras" (aproximándonos al 70-75% de probabilidad)
     # Restamos un margen al entero de la media para ganar confianza estadística
@@ -280,6 +281,7 @@ def predict_match(data: DatosPrediccion):
     prob_arco_safe = 1 - poisson.cdf(max(0, int(mu_total_arco) - 2), mu_total_arco)
     prob_corners_safe = 1 - poisson.cdf(max(0, int(mu_total_corners) - 2), mu_total_corners)
     prob_faltas_safe = 1 - poisson.cdf(max(0, int(mu_total_faltas) - 2), mu_total_faltas)
+    prob_amarillas_safe = 1 - poisson.cdf(max(0, int(mu_total_amarillas) - 2), mu_total_amarillas)
 
     # Cálculos individuales seguros (Local y Visita)
     prob_rem_l_safe = 1 - poisson.cdf(max(0, int(rem_l) - 2), rem_l)
@@ -290,6 +292,8 @@ def predict_match(data: DatosPrediccion):
     prob_corn_v_safe = 1 - poisson.cdf(max(0, int(corn_v) - 2), corn_v)
     prob_faltas_l_safe = 1 - poisson.cdf(max(0, int(faltas_l) - 2), faltas_l)
     prob_faltas_v_safe = 1 - poisson.cdf(max(0, int(faltas_v) - 2), faltas_v)
+    prob_amarillas_l_safe = 1 - poisson.cdf(max(0, int(amarillas_l) - 2), amarillas_l)
+    prob_amarillas_v_safe = 1 - poisson.cdf(max(0, int(amarillas_v) - 2), amarillas_v)
 
     return {
         "probabilidades": {
@@ -306,7 +310,8 @@ def predict_match(data: DatosPrediccion):
             "cumplir_estimacion_remates": round(float(prob_remates_over) * 100, 2),
             "cumplir_estimacion_corners": round(float(prob_corners_over) * 100, 2),
             "cumplir_estimacion_faltas": round(float(prob_faltas_over) * 100, 2),
-            "cumplir_estimacion_remates_al_arco": round(float(prob_arco_over) * 100, 2)
+            "cumplir_estimacion_remates_al_arco": round(float(prob_arco_over) * 100, 2),
+            "cumplir_estimacion_tarjetas_amarillas": round(float(prob_amarillas_over) * 100, 2)
         },
         "pronosticos_seguros": {
             "remates_totales_exito_70plus": f"Mas de {max(0, int(mu_total_remates) - 1.5)}",
@@ -332,7 +337,13 @@ def predict_match(data: DatosPrediccion):
             "faltas_local_exito_70plus": f"Mas de {max(0, int(faltas_l) - 1.5)}",
             "prob_faltas_local_seguro": round(float(prob_faltas_l_safe) * 100, 2),
             "faltas_visitante_exito_70plus": f"Mas de {max(0, int(faltas_v) - 1.5)}",
-            "prob_faltas_visitante_seguro": round(float(prob_faltas_v_safe) * 100, 2)
+            "prob_faltas_visitante_seguro": round(float(prob_faltas_v_safe) * 100, 2),
+            "amarillas_totales_exito_70plus": f"Mas de {max(0, int(mu_total_amarillas) - 1.5)}",
+            "prob_amarillas_seguro": round(float(prob_amarillas_safe) * 100, 2),
+            "amarillas_local_exito_70plus": f"Mas de {max(0, int(amarillas_l) - 1.5)}",
+            "prob_amarillas_local_seguro": round(float(prob_amarillas_l_safe) * 100, 2),
+            "amarillas_visitante_exito_70plus": f"Mas de {max(0, int(amarillas_v) - 1.5)}",
+            "prob_amarillas_visitante_seguro": round(float(prob_amarillas_v_safe) * 100, 2)
         },
         "marcador_probable": f"{res_idx[0]} - {res_idx[1]}",
         "prediccion_remates_totales": round(float(mu_total_remates), 1),
