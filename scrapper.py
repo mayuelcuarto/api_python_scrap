@@ -14,8 +14,9 @@ import uvicorn
 import numpy as np
 from scipy.stats import poisson
 from threading import Semaphore
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import datetime
 
 app = FastAPI(title="Soccer Scraper API")
 
@@ -25,6 +26,7 @@ scraper_semaphore = Semaphore(MAX_CONCURRENT_SCRAPERS)
 
 # Modelos de datos para la predicción
 class HistoricoPartido(BaseModel):
+    fecha: Optional[datetime] = None
     goles: float
     goles_recibidos: float
     remates: float
@@ -201,21 +203,28 @@ def predict_match(data: DatosPrediccion):
                 "amarillas_f", "amarillas_c", "rojas_f", "rojas_c"
             ]}
 
+        # Ordenar por fecha si está disponible (el más reciente primero)
+        if all(h.fecha is not None for h in history):
+            history = sorted(history, key=lambda x: x.fecha, reverse=True)
+
+        # Si quisiéramos aplicar pesos (opcional): los primeros elementos tienen más peso
+        # Por ahora seguiremos con la media, pero podrías usar np.average con weights
+        
         return {
-            "goles_f": float(np.mean([h.goles for h in history])),
-            "goles_c": float(np.mean([h.goles_recibidos for h in history])),
-            "remates_f": float(np.mean([h.remates for h in history])),
-            "remates_c": float(np.mean([h.remates_recibidos for h in history])),
-            "remates_arco_f": float(np.mean([h.remates_al_arco for h in history])),
-            "remates_arco_c": float(np.mean([h.remates_al_arco_recibidos for h in history])),
-            "corners_f": float(np.mean([h.corners for h in history])),
-            "corners_c": float(np.mean([h.corners_recibidos for h in history])),
-            "faltas_f": float(np.mean([h.faltas for h in history])),
-            "faltas_c": float(np.mean([h.faltas_recibidas for h in history])),
-            "amarillas_f": float(np.mean([h.tarjetas_amarillas for h in history])),
-            "amarillas_c": float(np.mean([h.tarjetas_amarillas_contrarias for h in history])),
-            "rojas_f": float(np.mean([h.tarjetas_rojas for h in history])),
-            "rojas_c": float(np.mean([h.tarjetas_rojas_contrarias for h in history])),
+            "goles_f": float(np.mean([h.goles for h in history[:10]])), # Ejemplo: usar solo los últimos 10
+            "goles_c": float(np.mean([h.goles_recibidos for h in history[:10]])),
+            "remates_f": float(np.mean([h.remates for h in history[:10]])),
+            "remates_c": float(np.mean([h.remates_recibidos for h in history[:10]])),
+            "remates_arco_f": float(np.mean([h.remates_al_arco for h in history[:10]])),
+            "remates_arco_c": float(np.mean([h.remates_al_arco_recibidos for h in history[:10]])),
+            "corners_f": float(np.mean([h.corners for h in history[:10]])),
+            "corners_c": float(np.mean([h.corners_recibidos for h in history[:10]])),
+            "faltas_f": float(np.mean([h.faltas for h in history[:10]])),
+            "faltas_c": float(np.mean([h.faltas_recibidas for h in history[:10]])),
+            "amarillas_f": float(np.mean([h.tarjetas_amarillas for h in history[:10]])),
+            "amarillas_c": float(np.mean([h.tarjetas_amarillas_contrarias for h in history[:10]])),
+            "rojas_f": float(np.mean([h.tarjetas_rojas for h in history[:10]])),
+            "rojas_c": float(np.mean([h.tarjetas_rojas_contrarias for h in history[:10]])),
         }
 
     # Calculamos promedios específicos: local en casa y visitante fuera de casa
