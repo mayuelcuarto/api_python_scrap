@@ -203,28 +203,41 @@ def predict_match(data: DatosPrediccion):
                 "amarillas_f", "amarillas_c", "rojas_f", "rojas_c"
             ]}
 
-        # Ordenar por fecha si está disponible (el más reciente primero)
+        # 1. Ordenar por fecha (más reciente primero)
+        history_sorted = history
         if all(h.fecha is not None for h in history):
-            history = sorted(history, key=lambda x: x.fecha, reverse=True)
+            history_sorted = sorted(history, key=lambda x: x.fecha, reverse=True)
 
-        # Si quisiéramos aplicar pesos (opcional): los primeros elementos tienen más peso
-        # Por ahora seguiremos con la media, pero podrías usar np.average con weights
-        
+        # 2. Tomar muestra de los últimos 10 partidos
+        sample = history_sorted[:10]
+        n = len(sample)
+
+        # 3. Definir pesos: si hay más de un partido, el peso es decreciente [n, n-1, ..., 1]
+        # Si no hay fechas o es solo un partido, pesos iguales.
+        if n > 1 and all(h.fecha is not None for h in sample):
+            weights = list(range(n, 0, -1))
+        else:
+            weights = [1] * n
+
+        # Función interna para calcular la media ponderada de una métrica
+        def weighted_avg(data_list: List[float]) -> float:
+            return float(np.average(data_list, weights=weights))
+
         return {
-            "goles_f": float(np.mean([h.goles for h in history[:10]])), # Ejemplo: usar solo los últimos 10
-            "goles_c": float(np.mean([h.goles_recibidos for h in history[:10]])),
-            "remates_f": float(np.mean([h.remates for h in history[:10]])),
-            "remates_c": float(np.mean([h.remates_recibidos for h in history[:10]])),
-            "remates_arco_f": float(np.mean([h.remates_al_arco for h in history[:10]])),
-            "remates_arco_c": float(np.mean([h.remates_al_arco_recibidos for h in history[:10]])),
-            "corners_f": float(np.mean([h.corners for h in history[:10]])),
-            "corners_c": float(np.mean([h.corners_recibidos for h in history[:10]])),
-            "faltas_f": float(np.mean([h.faltas for h in history[:10]])),
-            "faltas_c": float(np.mean([h.faltas_recibidas for h in history[:10]])),
-            "amarillas_f": float(np.mean([h.tarjetas_amarillas for h in history[:10]])),
-            "amarillas_c": float(np.mean([h.tarjetas_amarillas_contrarias for h in history[:10]])),
-            "rojas_f": float(np.mean([h.tarjetas_rojas for h in history[:10]])),
-            "rojas_c": float(np.mean([h.tarjetas_rojas_contrarias for h in history[:10]])),
+            "goles_f": weighted_avg([h.goles for h in sample]),
+            "goles_c": weighted_avg([h.goles_recibidos for h in sample]),
+            "remates_f": weighted_avg([h.remates for h in sample]),
+            "remates_c": weighted_avg([h.remates_recibidos for h in sample]),
+            "remates_arco_f": weighted_avg([h.remates_al_arco for h in sample]),
+            "remates_arco_c": weighted_avg([h.remates_al_arco_recibidos for h in sample]),
+            "corners_f": weighted_avg([h.corners for h in sample]),
+            "corners_c": weighted_avg([h.corners_recibidos for h in sample]),
+            "faltas_f": weighted_avg([h.faltas for h in sample]),
+            "faltas_c": weighted_avg([h.faltas_recibidas for h in sample]),
+            "amarillas_f": weighted_avg([h.tarjetas_amarillas for h in sample]),
+            "amarillas_c": weighted_avg([h.tarjetas_amarillas_contrarias for h in sample]),
+            "rojas_f": weighted_avg([h.tarjetas_rojas for h in sample]),
+            "rojas_c": weighted_avg([h.tarjetas_rojas_contrarias for h in sample]),
         }
 
     # Calculamos promedios específicos: local en casa y visitante fuera de casa
