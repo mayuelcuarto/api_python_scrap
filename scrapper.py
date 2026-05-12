@@ -188,14 +188,7 @@ def predict_match(data: DatosPrediccion):
     Realiza una predicción heurística basada en los últimos partidos,
     diferenciando el rendimiento según la fortaleza de local y visita.
     """
-    def get_averages(history: List[HistoricoPartido], filtro_local: bool = None):
-        # Intentamos filtrar partidos por condición de local/visita
-        if filtro_local is not None:
-            subset = [h for h in history if h.es_local == filtro_local]
-            # Si hay datos suficientes (mínimo 2 partidos), usamos el filtro específico
-            if len(subset) >= 2:
-                history = subset
-
+    def get_averages(history: List[HistoricoPartido], condicion_actual_local: bool = None):
         if not history:
             return {k: 0.0 for k in [
                 "goles_f", "goles_c", "remates_f", "remates_c", "remates_arco_f", "remates_arco_c", 
@@ -212,12 +205,19 @@ def predict_match(data: DatosPrediccion):
         sample = history_sorted[:10]
         n = len(sample)
 
-        # 3. Definir pesos: si hay más de un partido, el peso es decreciente [n, n-1, ..., 1]
-        # Si no hay fechas o es solo un partido, pesos iguales.
-        if n > 1 and all(h.fecha is not None for h in sample):
-            weights = list(range(n, 0, -1))
-        else:
-            weights = [1] * n
+        # 3. Definir pesos combinados: Recencia + Condición (Local/Visita)
+        weights = []
+        for i, h in enumerate(sample):
+            # Peso por recencia (más nuevo = más peso, de n a 1)
+            w_time = (n - i) if all(s.fecha is not None for s in sample) else 1
+            
+            # Peso por condición: si coincide con la situación actual, damos más relevancia
+            w_cond = 1.0
+            if condicion_actual_local is not None:
+                # Si el partido histórico coincide con el rol actual (ej: ambos local), duplicamos peso
+                w_cond = 2.0 if h.es_local == condicion_actual_local else 1.0
+            
+            weights.append(float(w_time * w_cond))
 
         # Función interna para calcular la media ponderada de una métrica
         def weighted_avg(data_list: List[float]) -> float:
@@ -241,8 +241,8 @@ def predict_match(data: DatosPrediccion):
         }
 
     # Calculamos promedios específicos: local en casa y visitante fuera de casa
-    avg_l = get_averages(data.equipo_local, filtro_local=True)
-    avg_v = get_averages(data.equipo_visitante, filtro_local=False)
+    avg_l = get_averages(data.equipo_local, condicion_actual_local=True)
+    avg_v = get_averages(data.equipo_visitante, condicion_actual_local=False)
 
     # Heurística: xG (Goles Esperados) simplificado
     # El xG de un equipo es el promedio entre lo que anota y lo que el rival recibe
