@@ -249,6 +249,10 @@ def predict_match(data: DatosPrediccion):
     mu_local = (avg_l["goles_f"] + avg_v["goles_c"]) / 2
     mu_visitante = (avg_v["goles_f"] + avg_l["goles_c"]) / 2
 
+    # Probabilidades de anotar al menos un gol
+    prob_anotar_l = 1 - poisson.pmf(0, mu_local)
+    prob_anotar_v = 1 - poisson.pmf(0, mu_visitante)
+
     # Predicciones detalladas por equipo (producción propia + concesión rival) / 2
     rem_l = (avg_l["remates_f"] + avg_v["remates_c"]) / 2
     rem_v = (avg_v["remates_f"] + avg_l["remates_c"]) / 2
@@ -375,6 +379,9 @@ def predict_match(data: DatosPrediccion):
         "prediccion_corners_totales": round(float(mu_total_corners), 1),
         "detalle_por_equipo": {
             "local": {
+                "goles_esperados": round(mu_local, 2),
+                "probabilidad_anotar": round(float(prob_anotar_l) * 100, 2),
+                "probabilidad_ganar": round(float(prob_local) * 100, 2),
                 "remates": round(rem_l, 1),
                 "remates_al_arco": round(arco_l, 1),
                 "corners": round(corn_l, 1),
@@ -383,6 +390,9 @@ def predict_match(data: DatosPrediccion):
                 "tarjetas_rojas": round(rojas_l, 2)
             },
             "visitante": {
+                "goles_esperados": round(mu_visitante, 2),
+                "probabilidad_anotar": round(float(prob_anotar_v) * 100, 2),
+                "probabilidad_ganar": round(float(prob_visitante) * 100, 2),
                 "remates": round(rem_v, 1),
                 "remates_al_arco": round(arco_v, 1),
                 "corners": round(corn_v, 1),
@@ -390,9 +400,7 @@ def predict_match(data: DatosPrediccion):
                 "tarjetas_amarillas": round(amarillas_v, 1),
                 "tarjetas_rojas": round(rojas_v, 2)
             }
-        },
-        "fuerza_ataque_local": round(mu_local, 2),
-        "fuerza_ataque_visitante": round(mu_visitante, 2)
+        }
     }
 
 @app.get("/api/stats")
