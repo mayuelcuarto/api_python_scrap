@@ -47,6 +47,7 @@ class HistoricoPartido(BaseModel):
 class DatosPrediccion(BaseModel):
     equipo_local: List[HistoricoPartido]
     equipo_visitante: List[HistoricoPartido]
+    es_neutral: bool = False
 
 # Instalar el driver una sola vez al inicio para mejorar rendimiento
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
@@ -240,9 +241,13 @@ def predict_match(data: DatosPrediccion):
             "rojas_c": weighted_avg([h.tarjetas_rojas_contrarias for h in sample]),
         }
 
-    # Calculamos promedios específicos: local en casa y visitante fuera de casa
-    avg_l = get_averages(data.equipo_local, condicion_actual_local=True)
-    avg_v = get_averages(data.equipo_visitante, condicion_actual_local=False)
+    # Si es neutral, no filtramos por condición de local/visita para los pesos
+    condicion_l = None if data.es_neutral else True
+    condicion_v = None if data.es_neutral else False
+
+    # Calculamos promedios: si es neutral, se toma el rendimiento general reciente
+    avg_l = get_averages(data.equipo_local, condicion_actual_local=condicion_l)
+    avg_v = get_averages(data.equipo_visitante, condicion_actual_local=condicion_v)
 
     # Heurística: xG (Goles Esperados) simplificado
     # El xG de un equipo es el promedio entre lo que anota y lo que el rival recibe
