@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 import time
 import re
 import uvicorn
+import os
 import numpy as np
 from scipy.stats import poisson
 from threading import Semaphore
@@ -72,10 +73,23 @@ def get_match_stats(url: str):
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        
+    # Optimizaciones para reducir consumo de RAM y DISCO
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--blink-settings=imagesEnabled=false") # No cargar imágenes ahorra mucho disco/cache
+    chrome_options.add_argument("--disk-cache-size=1") # Minimizar caché en disco
+    chrome_options.add_argument("--media-cache-size=1")
 
     # Usamos el servicio pre-configurado
-    driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
+    driver = None
     try:
+        driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
+            
+        # TIMEOUTS ESTRICTOS: Evitan que el proceso viva eternamente
+        driver.set_page_load_timeout(25) # Máximo 25 segundos para cargar la URL
+        driver.set_script_timeout(25)
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         driver.get(url)
         wait = WebDriverWait(driver, 20) # Aumentamos un poco el margen
@@ -181,7 +195,11 @@ def get_match_stats(url: str):
         return results
 
     finally:
-        driver.quit()
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
 
 @app.post("/api/predict")
 def predict_match(data: DatosPrediccion):
