@@ -104,8 +104,8 @@ def get_match_stats(url: str):
             # En lugar de sleep fijo, esperamos a que aparezca un elemento clave de las estadísticas
             wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(., 'Grandes chances')] | //div[contains(., 'Faltas')]")))
         except Exception:
-            pass # Si falla el clic, intentamos extraer lo que sea visible
             print("No se pudo hacer clic en la pestaña de estadísticas o no cargó a tiempo.")
+            raise Exception("No se pudo acceder a las estadísticas. Abortando para evitar bloqueo del sistema.")
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         results = {}
