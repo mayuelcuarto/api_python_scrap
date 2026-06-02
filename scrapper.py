@@ -44,6 +44,7 @@ class HistoricoPartido(BaseModel):
     tarjetas_rojas: float
     tarjetas_rojas_contrarias: float
     es_local: bool  # Indica si el equipo jugó en casa en ese partido histórico
+    sede_neutral: bool
 
 class DatosPrediccion(BaseModel):
     equipo_local: List[HistoricoPartido]
@@ -224,7 +225,7 @@ def predict_match(data: DatosPrediccion):
         sample = history_sorted[:10]
         n = len(sample)
 
-        # 3. Definir pesos combinados: Recencia + Condición (Local/Visita)
+        # 3. Definir pesos combinados: Recencia + Condición (Local/Visita/Neutral)
         weights = []
         for i, h in enumerate(sample):
             # Peso por recencia (más nuevo = más peso, de n a 1)
@@ -232,9 +233,13 @@ def predict_match(data: DatosPrediccion):
             
             # Peso por condición: si coincide con la situación actual, damos más relevancia
             w_cond = 1.0
-            if condicion_actual_local is not None:
-                # Si el partido histórico coincide con el rol actual (ej: ambos local), duplicamos peso
-                w_cond = 2.0 if h.es_local == condicion_actual_local else 1.0
+            if condicion_actual_local is None:
+                # Si el partido actual es neutral, priorizamos históricos que también fueron en sede neutral
+                w_cond = 2.0 if h.sede_neutral else 1.0
+            else:
+                # Priorizamos históricos que coinciden con la condición actual (Local/Visita) y no fueron neutrales
+                if not h.sede_neutral and h.es_local == condicion_actual_local:
+                    w_cond = 2.0
             
             weights.append(float(w_time * w_cond))
 
