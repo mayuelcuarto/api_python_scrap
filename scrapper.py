@@ -213,7 +213,8 @@ def predict_match(data: DatosPrediccion):
             return {k: 0.0 for k in [
                 "goles_f", "goles_c", "remates_f", "remates_c", "remates_arco_f", "remates_arco_c", 
                 "corners_f", "corners_c", "faltas_f", "faltas_c", 
-                "amarillas_f", "amarillas_c", "rojas_f", "rojas_c"
+                "amarillas_f", "amarillas_c", "rojas_f", "rojas_c",
+                "simple_remates", "simple_remates_arco", "simple_corners", "simple_faltas", "simple_amarillas"
             ]}
 
         # 1. Ordenar por fecha (más reciente primero)
@@ -247,7 +248,7 @@ def predict_match(data: DatosPrediccion):
         def weighted_avg(data_list: List[float]) -> float:
             return float(np.average(data_list, weights=weights))
 
-        return {
+        stats = {
             "goles_f": weighted_avg([h.goles for h in sample]),
             "goles_c": weighted_avg([h.goles_recibidos for h in sample]),
             "remates_f": weighted_avg([h.remates for h in sample]),
@@ -263,6 +264,30 @@ def predict_match(data: DatosPrediccion):
             "rojas_f": weighted_avg([h.tarjetas_rojas for h in sample]),
             "rojas_c": weighted_avg([h.tarjetas_rojas_contrarias for h in sample]),
         }
+
+        # Media simple filtrada por condición (Local/Visita) sin pesos para el reporte detallado
+        def simple_cond_avg(attr_name: str) -> float:
+            if condicion_actual_local is None:
+                # Si es neutral, tomamos la media simple de la muestra reciente
+                relevant_data = [getattr(h, attr_name) for h in sample]
+            else:
+                # Filtramos el historial completo por la condición actual (Local o Visita)
+                relevant_data = [getattr(h, attr_name) for h in history_sorted 
+                                if h.es_local == condicion_actual_local and not h.sede_neutral]
+            
+            if not relevant_data:
+                relevant_data = [getattr(h, attr_name) for h in sample]
+                
+            return float(np.mean(relevant_data)) if relevant_data else 0.0
+
+        stats.update({
+            "simple_remates": simple_cond_avg("remates"),
+            "simple_remates_arco": simple_cond_avg("remates_al_arco"),
+            "simple_corners": simple_cond_avg("corners"),
+            "simple_faltas": simple_cond_avg("faltas"),
+            "simple_amarillas": simple_cond_avg("tarjetas_amarillas"),
+        })
+        return stats
 
     # Si es neutral, no filtramos por condición de local/visita para los pesos
     condicion_l = None if data.es_neutral else True
@@ -415,7 +440,12 @@ def predict_match(data: DatosPrediccion):
                 "corners": round(corn_l, 1),
                 "faltas": round(faltas_l, 1),
                 "tarjetas_amarillas": round(amarillas_l, 1),
-                "tarjetas_rojas": round(rojas_l, 2)
+                "tarjetas_rojas": round(rojas_l, 2),
+                "promedio_remates": round(avg_l["simple_remates"], 1),
+                "promedio_remates_al_arco": round(avg_l["simple_remates_arco"], 1),
+                "promedio_corners": round(avg_l["simple_corners"], 1),
+                "promedio_faltas": round(avg_l["simple_faltas"], 1),
+                "promedio_amarillas": round(avg_l["simple_amarillas"], 1)
             },
             "visitante": {
                 "goles_esperados": round(mu_visitante, 2),
@@ -426,7 +456,12 @@ def predict_match(data: DatosPrediccion):
                 "corners": round(corn_v, 1),
                 "faltas": round(faltas_v, 1),
                 "tarjetas_amarillas": round(amarillas_v, 1),
-                "tarjetas_rojas": round(rojas_v, 2)
+                "tarjetas_rojas": round(rojas_v, 2),
+                "promedio_remates": round(avg_v["simple_remates"], 1),
+                "promedio_remates_al_arco": round(avg_v["simple_remates_arco"], 1),
+                "promedio_corners": round(avg_v["simple_corners"], 1),
+                "promedio_faltas": round(avg_v["simple_faltas"], 1),
+                "promedio_amarillas": round(avg_v["simple_amarillas"], 1)
             }
         }
     }
