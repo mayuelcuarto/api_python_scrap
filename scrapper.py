@@ -244,9 +244,18 @@ def predict_match(data: DatosPrediccion):
             
             weights.append(float(w_time * w_cond))
 
-        # Función interna para calcular la media ponderada de una métrica
+        # Función interna para calcular la media ponderada de una métrica, ignorando valores de -1
         def weighted_avg(data_list: List[float]) -> float:
-            return float(np.average(data_list, weights=weights))
+            filtered_data = []
+            filtered_weights = []
+            for val, w in zip(data_list, weights):
+                if val != -1:
+                    filtered_data.append(val)
+                    filtered_weights.append(w)
+            
+            if not filtered_data:
+                return 0.0
+            return float(np.average(filtered_data, weights=filtered_weights))
 
         stats = {
             "goles_f": weighted_avg([h.goles for h in sample]),
@@ -265,18 +274,18 @@ def predict_match(data: DatosPrediccion):
             "rojas_c": weighted_avg([h.tarjetas_rojas_contrarias for h in sample]),
         }
 
-        # Media simple filtrada por condición (Local/Visita) sin pesos para el reporte detallado
+        # Media simple filtrada por condición (Local/Visita) sin pesos para el reporte detallado, ignorando -1
         def simple_cond_avg(attr_name: str) -> float:
             if condicion_actual_local is None:
-                # Si es neutral, tomamos la media simple de la muestra reciente
-                relevant_data = [getattr(h, attr_name) for h in sample]
+                # Si es neutral, tomamos la media simple de la muestra reciente filtrando -1
+                relevant_data = [getattr(h, attr_name) for h in sample if getattr(h, attr_name) != -1]
             else:
-                # Filtramos el historial completo por la condición actual (Local o Visita)
+                # Filtramos el historial completo por la condición actual (Local o Visita) filtrando -1
                 relevant_data = [getattr(h, attr_name) for h in history_sorted 
-                                if h.es_local == condicion_actual_local and not h.sede_neutral]
+                                if h.es_local == condicion_actual_local and not h.sede_neutral and getattr(h, attr_name) != -1]
             
             if not relevant_data:
-                relevant_data = [getattr(h, attr_name) for h in sample]
+                relevant_data = [getattr(h, attr_name) for h in sample if getattr(h, attr_name) != -1]
                 
             return float(np.mean(relevant_data)) if relevant_data else 0.0
 
