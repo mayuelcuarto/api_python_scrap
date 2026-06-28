@@ -19,6 +19,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
+SAFE_OVER_TARGET = 0.75
+SAFE_UNDER_TARGET = 0.75
+
 app = FastAPI(title="Soccer Scraper API")
 
 # Limitar el número de navegadores abiertos simultáneamente (ajusta según tu RAM)
@@ -378,29 +381,61 @@ def predict_match(data: DatosPrediccion):
     prob_menos_faltas_local = poisson.cdf(max(0, int(np.floor(faltas_l))), faltas_l)
     prob_menos_faltas_visitante = poisson.cdf(max(0, int(np.floor(faltas_v))), faltas_v)
 
-    # Cálculo de "Líneas Seguras" (aproximándonos al 70-75% de probabilidad)
-    # Restamos un margen al entero de la media para ganar confianza estadística
-    prob_remates_safe = 1 - poisson.cdf(max(0, int(mu_total_remates) - 2), mu_total_remates)
-    prob_menos_remates_safe = poisson.cdf(max(0, int(np.floor(mu_total_remates))), mu_total_remates)
-    prob_arco_safe = 1 - poisson.cdf(max(0, int(mu_total_arco) - 2), mu_total_arco)
-    prob_menos_arco_safe = poisson.cdf(max(0, int(np.floor(mu_total_arco))), mu_total_arco)
-    prob_corners_safe = 1 - poisson.cdf(max(0, int(mu_total_corners) - 2), mu_total_corners)
-    prob_menos_corners_safe = poisson.cdf(max(0, int(np.floor(mu_total_corners))), mu_total_corners)
-    prob_faltas_safe = 1 - poisson.cdf(max(0, int(mu_total_faltas) - 2), mu_total_faltas)
-    prob_menos_faltas_safe = poisson.cdf(max(0, int(np.floor(mu_total_faltas))), mu_total_faltas)
-    prob_amarillas_safe = 1 - poisson.cdf(max(0, int(mu_total_amarillas) - 2), mu_total_amarillas)
+    # Cálculo de "Líneas Seguras" (objetivo ~72% de probabilidad)
+    def poisson_safe_over_threshold(mu_value: float, target: float = 0.75):
+        mu_value = max(mu_value, 0.0)
+        max_k = max(10, int(mu_value * 3) + 10)
+        best_k = 1
+        best_prob = 1 - poisson.cdf(0, mu_value)
+        for k in range(1, max_k):
+            prob = 1 - poisson.cdf(k - 1, mu_value)
+            if prob >= target:
+                best_k = k
+                best_prob = prob
+            else:
+                break
+        return best_k, best_prob
 
-    # Cálculos individuales seguros (Local y Visita)
-    prob_rem_l_safe = 1 - poisson.cdf(max(0, int(rem_l) - 2), rem_l)
-    prob_rem_v_safe = 1 - poisson.cdf(max(0, int(rem_v) - 2), rem_v)
-    prob_arco_l_safe = 1 - poisson.cdf(max(0, int(arco_l) - 2), arco_l)
-    prob_arco_v_safe = 1 - poisson.cdf(max(0, int(arco_v) - 2), arco_v)
-    prob_corn_l_safe = 1 - poisson.cdf(max(0, int(corn_l) - 2), corn_l)
-    prob_corn_v_safe = 1 - poisson.cdf(max(0, int(corn_v) - 2), corn_v)
-    prob_faltas_l_safe = 1 - poisson.cdf(max(0, int(faltas_l) - 2), faltas_l)
-    prob_faltas_v_safe = 1 - poisson.cdf(max(0, int(faltas_v) - 2), faltas_v)
-    prob_amarillas_l_safe = 1 - poisson.cdf(max(0, int(amarillas_l) - 2), amarillas_l)
-    prob_amarillas_v_safe = 1 - poisson.cdf(max(0, int(amarillas_v) - 2), amarillas_v)
+    def poisson_safe_under_threshold(mu_value: float, target: float = 0.75):
+        mu_value = max(mu_value, 0.0)
+        max_k = max(10, int(mu_value * 3) + 10)
+        for k in range(0, max_k):
+            prob = poisson.cdf(k, mu_value)
+            if prob >= target:
+                return k, prob
+        return max(max_k - 1, 0), poisson.cdf(max(max_k - 1, 0), mu_value)
+
+    remates_totales_over_line, prob_remates_safe = poisson_safe_over_threshold(mu_total_remates, target=SAFE_OVER_TARGET)
+    remates_totales_under_line, prob_menos_remates_safe = poisson_safe_under_threshold(mu_total_remates, target=SAFE_UNDER_TARGET)
+    arco_totales_over_line, prob_arco_safe = poisson_safe_over_threshold(mu_total_arco, target=SAFE_OVER_TARGET)
+    arco_totales_under_line, prob_menos_arco_safe = poisson_safe_under_threshold(mu_total_arco, target=SAFE_UNDER_TARGET)
+    corners_totales_over_line, prob_corners_safe = poisson_safe_over_threshold(mu_total_corners, target=SAFE_OVER_TARGET)
+    corners_totales_under_line, prob_menos_corners_safe = poisson_safe_under_threshold(mu_total_corners, target=SAFE_UNDER_TARGET)
+    faltas_totales_over_line, prob_faltas_safe = poisson_safe_over_threshold(mu_total_faltas, target=SAFE_OVER_TARGET)
+    faltas_totales_under_line, prob_menos_faltas_safe = poisson_safe_under_threshold(mu_total_faltas, target=SAFE_UNDER_TARGET)
+    amarillas_totales_over_line, prob_amarillas_safe = poisson_safe_over_threshold(mu_total_amarillas, target=SAFE_OVER_TARGET)
+    amarillas_totales_under_line, prob_menos_amarillas_safe = poisson_safe_under_threshold(mu_total_amarillas, target=SAFE_UNDER_TARGET)
+
+    remates_local_over_line, prob_rem_l_safe = poisson_safe_over_threshold(rem_l, target=SAFE_OVER_TARGET)
+    remates_local_under_line, prob_menos_rem_l_safe = poisson_safe_under_threshold(rem_l, target=SAFE_UNDER_TARGET)
+    remates_visitante_over_line, prob_rem_v_safe = poisson_safe_over_threshold(rem_v, target=SAFE_OVER_TARGET)
+    remates_visitante_under_line, prob_menos_rem_v_safe = poisson_safe_under_threshold(rem_v, target=SAFE_UNDER_TARGET)
+    arco_local_over_line, prob_arco_l_safe = poisson_safe_over_threshold(arco_l, target=SAFE_OVER_TARGET)
+    arco_local_under_line, prob_menos_arco_l_safe = poisson_safe_under_threshold(arco_l, target=SAFE_UNDER_TARGET)
+    arco_visitante_over_line, prob_arco_v_safe = poisson_safe_over_threshold(arco_v, target=SAFE_OVER_TARGET)
+    arco_visitante_under_line, prob_menos_arco_v_safe = poisson_safe_under_threshold(arco_v, target=SAFE_UNDER_TARGET)
+    corners_local_over_line, prob_corn_l_safe = poisson_safe_over_threshold(corn_l, target=SAFE_OVER_TARGET)
+    corners_local_under_line, prob_menos_corn_l_safe = poisson_safe_under_threshold(corn_l, target=SAFE_UNDER_TARGET)
+    corners_visitante_over_line, prob_corn_v_safe = poisson_safe_over_threshold(corn_v, target=SAFE_OVER_TARGET)
+    corners_visitante_under_line, prob_menos_corn_v_safe = poisson_safe_under_threshold(corn_v, target=SAFE_UNDER_TARGET)
+    faltas_local_over_line, prob_faltas_l_safe = poisson_safe_over_threshold(faltas_l, target=SAFE_OVER_TARGET)
+    faltas_local_under_line, prob_menosfaltas_l_safe = poisson_safe_under_threshold(faltas_l, target=SAFE_UNDER_TARGET)
+    faltas_visitante_over_line, prob_faltas_v_safe = poisson_safe_over_threshold(faltas_v, target=SAFE_OVER_TARGET)
+    faltas_visitante_under_line, prob_menos_faltas_v_safe = poisson_safe_under_threshold(faltas_v, target=SAFE_UNDER_TARGET)
+    amarillas_local_over_line, prob_amarillas_l_safe = poisson_safe_over_threshold(amarillas_l, target=SAFE_OVER_TARGET)
+    amarillas_local_under_line, prob_menos_amarillas_l_safe = poisson_safe_under_threshold(amarillas_l, target=SAFE_UNDER_TARGET)
+    amarillas_visitante_over_line, prob_amarillas_v_safe = poisson_safe_over_threshold(amarillas_v, target=SAFE_OVER_TARGET)
+    amarillas_visitante_under_line, prob_menos_amarillas_v_safe = poisson_safe_under_threshold(amarillas_v, target=SAFE_UNDER_TARGET)
 
     return {
         "probabilidades": {
@@ -433,43 +468,47 @@ def predict_match(data: DatosPrediccion):
             "menos_de_faltas_visitante": round(float(prob_menos_faltas_visitante) * 100, 2)
         },
         "pronosticos_seguros": {
-            "remates_totales_exito_70plus": f"Mas de {max(0, int(mu_total_remates) - 1.5)}",
+            "remates_totales_exito_70plus": f"+ {remates_totales_over_line}",
             "prob_remates_seguro": round(float(prob_remates_safe) * 100, 2),
-            "menos_remates_totales_exito_70plus": f"Menos de {max(0, int(mu_total_remates) + 0.5)}",
+            "menos_remates_totales_exito_70plus": f"- {remates_totales_under_line}",
             "menos_prob_remates_seguro": round(float(prob_menos_remates_safe) * 100, 2),
-            "remates_local_exito_70plus": f"Mas de {max(0, int(rem_l) - 1.5)}",
+            "remates_local_exito_70plus": f"+ {remates_local_over_line}",
             "prob_remates_local_seguro": round(float(prob_rem_l_safe) * 100, 2),
-            "remates_visitante_exito_70plus": f"Mas de {max(0, int(rem_v) - 1.5)}",
+            "menos_remates_local_exito_70plus": f"- {remates_local_under_line}",
+            "menos_prob_remates_local_seguro": round(float(prob_menos_rem_l_safe) * 100, 2),
+            "remates_visitante_exito_70plus": f"+ {remates_visitante_over_line}",
             "prob_remates_visitante_seguro": round(float(prob_rem_v_safe) * 100, 2),
-            "corners_totales_exito_70plus": f"Mas de {max(0, int(mu_total_corners) - 1.5)}",
+            "menos_remates_visitante_exito_70plus": f"+ {remates_visitante_under_line}",
+            "menos_prob_remates_visitante_seguro": round(float(prob_menos_rem_v_safe) * 100, 2),
+            "corners_totales_exito_70plus": f"+ {corners_totales_over_line}",
             "prob_corners_seguro": round(float(prob_corners_safe) * 100, 2),
-            "menos_corners_totales_exito_70plus": f"Menos de {max(0, int(mu_total_corners) + 0.5)}",
+            "menos_corners_totales_exito_70plus": f"- {corners_totales_under_line}",
             "menos_prob_corners_seguro": round(float(prob_menos_corners_safe) * 100, 2),
-            "corners_local_exito_70plus": f"Mas de {max(0, int(corn_l) - 1.5)}",
+            "corners_local_exito_70plus": f"+ {corners_local_over_line}",
             "prob_corners_local_seguro": round(float(prob_corn_l_safe) * 100, 2),
-            "corners_visitante_exito_70plus": f"Mas de {max(0, int(corn_v) - 1.5)}",
+            "corners_visitante_exito_70plus": f"+ {corners_visitante_over_line}",
             "prob_corners_visitante_seguro": round(float(prob_corn_v_safe) * 100, 2),
-            "remates_al_arco_exito_70plus": f"Mas de {max(0, int(mu_total_arco) - 1.5)}",
+            "remates_al_arco_exito_70plus": f"+ {arco_totales_over_line}",
             "prob_arco_seguro": round(float(prob_arco_safe) * 100, 2),
-            "menos_remates_al_arco_exito_70plus": f"Menos de {max(0, int(mu_total_arco) + 0.5)}",
+            "menos_remates_al_arco_exito_70plus": f"- {arco_totales_under_line}",
             "menos_prob_arco_seguro": round(float(prob_menos_arco_safe) * 100, 2),
-            "remates_al_arco_local_exito_70plus": f"Mas de {max(0, int(arco_l) - 1.5)}",
+            "remates_al_arco_local_exito_70plus": f"+ {arco_local_over_line}",
             "prob_arco_local_seguro": round(float(prob_arco_l_safe) * 100, 2),
-            "remates_al_arco_visitante_exito_70plus": f"Mas de {max(0, int(arco_v) - 1.5)}",
+            "remates_al_arco_visitante_exito_70plus": f"+ {arco_visitante_over_line}",
             "prob_arco_visitante_seguro": round(float(prob_arco_v_safe) * 100, 2),
-            "faltas_totales_exito_70plus": f"Mas de {max(0, int(mu_total_faltas) - 1.5)}",
+            "faltas_totales_exito_70plus": f"+ {faltas_totales_over_line}",
             "prob_faltas_seguro": round(float(prob_faltas_safe) * 100, 2),
-            "menos_faltas_totales_exito_70plus": f"Menos de {max(0, int(mu_total_faltas) + 0.5)}",
+            "menos_faltas_totales_exito_70plus": f"- {faltas_totales_under_line}",
             "menos_prob_faltas_seguro": round(float(prob_menos_faltas_safe) * 100, 2),
-            "faltas_local_exito_70plus": f"Mas de {max(0, int(faltas_l) - 1.5)}",
+            "faltas_local_exito_70plus": f"+ {faltas_local_over_line}",
             "prob_faltas_local_seguro": round(float(prob_faltas_l_safe) * 100, 2),
-            "faltas_visitante_exito_70plus": f"Mas de {max(0, int(faltas_v) - 1.5)}",
+            "faltas_visitante_exito_70plus": f"+ {faltas_visitante_over_line}",
             "prob_faltas_visitante_seguro": round(float(prob_faltas_v_safe) * 100, 2),
-            "amarillas_totales_exito_70plus": f"Mas de {max(0, int(mu_total_amarillas) - 1.5)}",
+            "amarillas_totales_exito_70plus": f"+ {amarillas_totales_over_line}",
             "prob_amarillas_seguro": round(float(prob_amarillas_safe) * 100, 2),
-            "amarillas_local_exito_70plus": f"Mas de {max(0, int(amarillas_l) - 1.5)}",
+            "amarillas_local_exito_70plus": f"+ {amarillas_local_over_line}",
             "prob_amarillas_local_seguro": round(float(prob_amarillas_l_safe) * 100, 2),
-            "amarillas_visitante_exito_70plus": f"Mas de {max(0, int(amarillas_v) - 1.5)}",
+            "amarillas_visitante_exito_70plus": f"+ {amarillas_visitante_over_line}",
             "prob_amarillas_visitante_seguro": round(float(prob_amarillas_v_safe) * 100, 2)
         },
         "marcador_probable": f"{res_idx[0]} - {res_idx[1]}",
