@@ -19,8 +19,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
-SAFE_OVER_TARGET = 0.75
-SAFE_UNDER_TARGET = 0.75
+SAFE_OVER_TARGET = 0.70
+SAFE_UNDER_TARGET = 0.70
 
 app = FastAPI(title="Soccer Scraper API")
 
@@ -381,7 +381,7 @@ def predict_match(data: DatosPrediccion):
     prob_menos_faltas_local = poisson.cdf(max(0, int(np.floor(faltas_l))), faltas_l)
     prob_menos_faltas_visitante = poisson.cdf(max(0, int(np.floor(faltas_v))), faltas_v)
 
-    # Cálculo de "Líneas Seguras" (objetivo ~72% de probabilidad)
+    # Cálculo de "Líneas Seguras" (objetivo ~75% de probabilidad)
     def poisson_safe_over_threshold(mu_value: float, target: float = 0.75):
         mu_value = max(mu_value, 0.0)
         max_k = max(10, int(mu_value * 3) + 10)
@@ -429,7 +429,7 @@ def predict_match(data: DatosPrediccion):
     corners_visitante_over_line, prob_corn_v_safe = poisson_safe_over_threshold(corn_v, target=SAFE_OVER_TARGET)
     corners_visitante_under_line, prob_menos_corn_v_safe = poisson_safe_under_threshold(corn_v, target=SAFE_UNDER_TARGET)
     faltas_local_over_line, prob_faltas_l_safe = poisson_safe_over_threshold(faltas_l, target=SAFE_OVER_TARGET)
-    faltas_local_under_line, prob_menosfaltas_l_safe = poisson_safe_under_threshold(faltas_l, target=SAFE_UNDER_TARGET)
+    faltas_local_under_line, prob_menos_faltas_l_safe = poisson_safe_under_threshold(faltas_l, target=SAFE_UNDER_TARGET)
     faltas_visitante_over_line, prob_faltas_v_safe = poisson_safe_over_threshold(faltas_v, target=SAFE_OVER_TARGET)
     faltas_visitante_under_line, prob_menos_faltas_v_safe = poisson_safe_under_threshold(faltas_v, target=SAFE_UNDER_TARGET)
     amarillas_local_over_line, prob_amarillas_l_safe = poisson_safe_over_threshold(amarillas_l, target=SAFE_OVER_TARGET)
@@ -468,48 +468,66 @@ def predict_match(data: DatosPrediccion):
             "menos_de_faltas_visitante": round(float(prob_menos_faltas_visitante) * 100, 2)
         },
         "pronosticos_seguros": {
-            "remates_totales_exito_70plus": f"+ {remates_totales_over_line}",
+            "remates_totales_exito_70plus": f"+ {remates_totales_over_line - 0.5}",
             "prob_remates_seguro": round(float(prob_remates_safe) * 100, 2),
-            "menos_remates_totales_exito_70plus": f"- {remates_totales_under_line}",
+            "menos_remates_totales_exito_70plus": f"- {remates_totales_under_line + 0.5}",
             "menos_prob_remates_seguro": round(float(prob_menos_remates_safe) * 100, 2),
-            "remates_local_exito_70plus": f"+ {remates_local_over_line}",
+            "remates_local_exito_70plus": f"+ {remates_local_over_line - 0.5}",
             "prob_remates_local_seguro": round(float(prob_rem_l_safe) * 100, 2),
-            "menos_remates_local_exito_70plus": f"- {remates_local_under_line}",
+            "menos_remates_local_exito_70plus": f"- {remates_local_under_line + 0.5}",
             "menos_prob_remates_local_seguro": round(float(prob_menos_rem_l_safe) * 100, 2),
-            "remates_visitante_exito_70plus": f"+ {remates_visitante_over_line}",
+            "remates_visitante_exito_70plus": f"+ {remates_visitante_over_line - 0.5}",
             "prob_remates_visitante_seguro": round(float(prob_rem_v_safe) * 100, 2),
-            "menos_remates_visitante_exito_70plus": f"+ {remates_visitante_under_line}",
+            "menos_remates_visitante_exito_70plus": f"- {remates_visitante_under_line + 0.5}",
             "menos_prob_remates_visitante_seguro": round(float(prob_menos_rem_v_safe) * 100, 2),
-            "corners_totales_exito_70plus": f"+ {corners_totales_over_line}",
+            "corners_totales_exito_70plus": f"+ {corners_totales_over_line - 0.5}",
             "prob_corners_seguro": round(float(prob_corners_safe) * 100, 2),
-            "menos_corners_totales_exito_70plus": f"- {corners_totales_under_line}",
+            "menos_corners_totales_exito_70plus": f"- {corners_totales_under_line + 0.5}",
             "menos_prob_corners_seguro": round(float(prob_menos_corners_safe) * 100, 2),
-            "corners_local_exito_70plus": f"+ {corners_local_over_line}",
+            "corners_local_exito_70plus": f"+ {corners_local_over_line - 0.5}",
             "prob_corners_local_seguro": round(float(prob_corn_l_safe) * 100, 2),
-            "corners_visitante_exito_70plus": f"+ {corners_visitante_over_line}",
+            "menos_corners_local_exito_70plus": f"- {corners_local_under_line + 0.5}",
+            "menos_prob_corners_local_seguro": round(float(prob_menos_corn_l_safe) * 100, 2),
+            "corners_visitante_exito_70plus": f"+ {corners_visitante_over_line - 0.5}",
             "prob_corners_visitante_seguro": round(float(prob_corn_v_safe) * 100, 2),
-            "remates_al_arco_exito_70plus": f"+ {arco_totales_over_line}",
+            "menos_corners_visitante_exito_70plus": f"- {corners_visitante_under_line + 0.5}",
+            "menos_prob_corners_visitante_seguro": round(float(prob_menos_corn_v_safe) * 100, 2),
+            "remates_al_arco_exito_70plus": f"+ {arco_totales_over_line - 0.5}",
             "prob_arco_seguro": round(float(prob_arco_safe) * 100, 2),
-            "menos_remates_al_arco_exito_70plus": f"- {arco_totales_under_line}",
+            "menos_remates_al_arco_exito_70plus": f"- {arco_totales_under_line + 0.5}",
             "menos_prob_arco_seguro": round(float(prob_menos_arco_safe) * 100, 2),
-            "remates_al_arco_local_exito_70plus": f"+ {arco_local_over_line}",
+            "remates_al_arco_local_exito_70plus": f"+ {arco_local_over_line - 0.5}",
             "prob_arco_local_seguro": round(float(prob_arco_l_safe) * 100, 2),
-            "remates_al_arco_visitante_exito_70plus": f"+ {arco_visitante_over_line}",
+            "menos_remates_al_arco_local_exito_70plus": f"- {arco_local_under_line + 0.5}",
+            "menos_prob_arco_local_seguro": round(float(prob_menos_arco_l_safe) * 100, 2),
+            "remates_al_arco_visitante_exito_70plus": f"+ {arco_visitante_over_line - 0.5}",
             "prob_arco_visitante_seguro": round(float(prob_arco_v_safe) * 100, 2),
-            "faltas_totales_exito_70plus": f"+ {faltas_totales_over_line}",
+            "menos_remates_al_arco_visitante_exito_70plus": f"- {arco_visitante_under_line + 0.5}",
+            "menos_prob_arco_visitante_seguro": round(float(prob_menos_arco_v_safe) * 100, 2),
+            "faltas_totales_exito_70plus": f"+ {faltas_totales_over_line - 0.5}",
             "prob_faltas_seguro": round(float(prob_faltas_safe) * 100, 2),
-            "menos_faltas_totales_exito_70plus": f"- {faltas_totales_under_line}",
+            "menos_faltas_totales_exito_70plus": f"- {faltas_totales_under_line + 0.5}",
             "menos_prob_faltas_seguro": round(float(prob_menos_faltas_safe) * 100, 2),
-            "faltas_local_exito_70plus": f"+ {faltas_local_over_line}",
+            "faltas_local_exito_70plus": f"+ {faltas_local_over_line - 0.5}",
             "prob_faltas_local_seguro": round(float(prob_faltas_l_safe) * 100, 2),
-            "faltas_visitante_exito_70plus": f"+ {faltas_visitante_over_line}",
+            "menos_faltas_local_exito_70plus": f"- {faltas_local_under_line + 0.5}",
+            "menos_prob_faltas_local_seguro": round(float(prob_menos_faltas_l_safe) * 100, 2),
+            "faltas_visitante_exito_70plus": f"+ {faltas_visitante_over_line - 0.5}",
             "prob_faltas_visitante_seguro": round(float(prob_faltas_v_safe) * 100, 2),
-            "amarillas_totales_exito_70plus": f"+ {amarillas_totales_over_line}",
+            "menos_faltas_visitante_exito_70plus": f"- {faltas_visitante_under_line + 0.5}",
+            "menos_prob_faltas_visitante_seguro": round(float(prob_menos_faltas_v_safe) * 100, 2),
+            "amarillas_totales_exito_70plus": f"+ {amarillas_totales_over_line - 0.5}",
             "prob_amarillas_seguro": round(float(prob_amarillas_safe) * 100, 2),
-            "amarillas_local_exito_70plus": f"+ {amarillas_local_over_line}",
+            "menos_amarillas_totales_exito_70plus": f"- {amarillas_totales_under_line + 0.5}",
+            "menos_prob_amarillas_seguro": round(float(prob_menos_amarillas_safe) * 100, 2),
+            "amarillas_local_exito_70plus": f"+ {amarillas_local_over_line - 0.5}",
             "prob_amarillas_local_seguro": round(float(prob_amarillas_l_safe) * 100, 2),
-            "amarillas_visitante_exito_70plus": f"+ {amarillas_visitante_over_line}",
-            "prob_amarillas_visitante_seguro": round(float(prob_amarillas_v_safe) * 100, 2)
+            "menos_amarillas_local_exito_70plus": f"- {amarillas_local_under_line + 0.5}",
+            "menos_prob_amarillas_local_seguro": round(float(prob_menos_amarillas_l_safe) * 100, 2),
+            "amarillas_visitante_exito_70plus": f"+ {amarillas_visitante_over_line - 0.5}",
+            "prob_amarillas_visitante_seguro": round(float(prob_amarillas_v_safe) * 100, 2),
+            "menos_amarillas_visitante_exito_70plus": f"- {amarillas_visitante_under_line + 0.5}",
+            "menos_prob_amarillas_visitante_seguro": round(float(prob_menos_amarillas_v_safe) * 100, 2)
         },
         "marcador_probable": f"{res_idx[0]} - {res_idx[1]}",
         "prediccion_remates_totales": round(float(mu_total_remates), 1),
