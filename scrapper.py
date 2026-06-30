@@ -19,8 +19,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
-SAFE_OVER_TARGET = 0.70
-SAFE_UNDER_TARGET = 0.70
+SAFE_OVER_TARGET = 0.75
+SAFE_UNDER_TARGET = 0.75
 
 app = FastAPI(title="Soccer Scraper API")
 
