@@ -19,9 +19,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
-SAFE_OVER_TARGET = 0.75
-SAFE_UNDER_TARGET = 0.75
-
 app = FastAPI(title="Soccer Scraper API")
 
 # Limitar el número de navegadores abiertos simultáneamente (ajusta según tu RAM)
@@ -53,6 +50,7 @@ class DatosPrediccion(BaseModel):
     equipo_local: List[HistoricoPartido]
     equipo_visitante: List[HistoricoPartido]
     es_neutral: bool = False
+    probabilidad: float = 0.75
 
 # Instalar el driver una sola vez al inicio para mejorar rendimiento
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
@@ -207,6 +205,9 @@ def get_match_stats(url: str):
 
 @app.post("/api/predict")
 def predict_match(data: DatosPrediccion):
+    SAFE_OVER_TARGET = data.probabilidad
+    SAFE_UNDER_TARGET = data.probabilidad
+
     """
     Realiza una predicción heurística basada en los últimos partidos,
     diferenciando el rendimiento según la fortaleza de local y visita.
