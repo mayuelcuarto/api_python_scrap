@@ -12,6 +12,8 @@ import time
 import re
 import uvicorn
 import os
+import shutil
+import tempfile
 import numpy as np
 from scipy.stats import poisson
 from threading import Semaphore
@@ -67,6 +69,8 @@ app.add_middleware(
 
 def get_match_stats(url: str):
     chrome_options = Options()
+    profile_dir = tempfile.mkdtemp(prefix="scraper-chrome-")
+    chrome_options.add_argument(f"--user-data-dir={profile_dir}")
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -83,6 +87,10 @@ def get_match_stats(url: str):
     chrome_options.add_argument("--blink-settings=imagesEnabled=false") # No cargar imágenes ahorra mucho disco/cache
     chrome_options.add_argument("--disk-cache-size=1") # Minimizar caché en disco
     chrome_options.add_argument("--media-cache-size=1")
+    chrome_options.add_argument("--disable-application-cache")
+    chrome_options.add_argument("--aggressive-cache-discard")
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--disable-background-networking")
 
     # Usamos el servicio pre-configurado
     driver = None
@@ -202,6 +210,7 @@ def get_match_stats(url: str):
                 driver.quit()
             except:
                 pass
+        shutil.rmtree(profile_dir, ignore_errors=True)
 
 @app.post("/api/predict")
 def predict_match(data: DatosPrediccion):
