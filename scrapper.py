@@ -56,7 +56,6 @@ class DatosPrediccion(BaseModel):
 
 # Instalar el driver una sola vez al inicio para mejorar rendimiento
 CHROME_DRIVER_PATH = ChromeDriverManager().install()
-chrome_service = Service(CHROME_DRIVER_PATH)
 
 # Configuración de CORS para permitir peticiones desde Angular (habitualmente puerto 4200)
 app.add_middleware(
@@ -94,15 +93,19 @@ def get_match_stats(url: str):
 
     # Usamos el servicio pre-configurado
     driver = None
+    chrome_service = Service(CHROME_DRIVER_PATH)
     try:
         driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
             
-        # TIMEOUTS ESTRICTOS: Evitan que el proceso viva eternamente
-        driver.set_page_load_timeout(25) # Máximo 25 segundos para cargar la URL
+        # Esperamos la carga completa del documento y del contenido inicial.
+        driver.set_page_load_timeout(40) # Máximo 40 segundos para cargar la URL
         driver.set_script_timeout(25)
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         driver.get(url)
-        wait = WebDriverWait(driver, 20) # Aumentamos un poco el margen
+        wait = WebDriverWait(driver, 40)
+        wait.until(lambda current_driver: current_driver.execute_script(
+            "return document.readyState"
+        ) == "complete")
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         
         # Intentar hacer clic en la pestaña "Estadísticas"
@@ -205,11 +208,15 @@ def get_match_stats(url: str):
         return results
 
     finally:
-        if driver:
+        if driver is not None:
             try:
                 driver.quit()
-            except:
-                pass
+            except Exception as cleanup_error:
+                print(f"Error cerrando WebDriver: {cleanup_error}")
+        try:
+            chrome_service.stop()
+        except Exception as cleanup_error:
+            print(f"Error deteniendo ChromeDriver: {cleanup_error}")
         shutil.rmtree(profile_dir, ignore_errors=True)
 
 @app.post("/api/predict")
