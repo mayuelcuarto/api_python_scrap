@@ -12,11 +12,12 @@ import time
 import re
 import uvicorn
 import os
+import subprocess
 import shutil
 import tempfile
 import numpy as np
 from scipy.stats import poisson
-from threading import Semaphore
+from threading import Semaphore, Thread
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
@@ -24,7 +25,8 @@ from datetime import datetime
 app = FastAPI(title="Soccer Scraper API")
 
 # Limitar el número de navegadores abiertos simultáneamente (ajusta según tu RAM)
-MAX_CONCURRENT_SCRAPERS = 3
+MAX_CONCURRENT_SCRAPERS = 1
+SCRAPER_QUEUE_TIMEOUT = 30
 scraper_semaphore = Semaphore(MAX_CONCURRENT_SCRAPERS)
 
 # Modelos de datos para la predicción
@@ -65,6 +67,44 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def _cleanup_driver(driver, chrome_service, profile_dir):
+    """Cierra Chrome sin permitir que la limpieza bloquee la solicitud."""
+    driver_pid = None
+    service_process = getattr(chrome_service, "process", None)
+    if service_process is not None:
+        driver_pid = getattr(service_process, "pid", None)
+
+    if driver is not None:
+        quit_thread = Thread(target=driver.quit, daemon=True)
+        quit_thread.start()
+        quit_thread.join(timeout=5)
+
+    # En Windows, ChromeDriver puede dejar procesos hijos vivos aunque quit()
+    # haya vencido o haya lanzado una excepción.
+    if driver_pid and os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(driver_pid), "/T", "/F"],
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as cleanup_error:
+            print(f"Error finalizando el árbol de Chrome: {cleanup_error}")
+
+    try:
+        chrome_service.stop()
+    except Exception as cleanup_error:
+        print(f"Error deteniendo ChromeDriver: {cleanup_error}")
+
+    # Chrome puede tardar unos instantes en liberar archivos del perfil.
+    for _ in range(3):
+        try:
+            shutil.rmtree(profile_dir)
+            break
+        except OSError:
+            time.sleep(0.5)
 
 def get_match_stats(url: str):
     chrome_options = Options()
@@ -208,16 +248,7 @@ def get_match_stats(url: str):
         return results
 
     finally:
-        if driver is not None:
-            try:
-                driver.quit()
-            except Exception as cleanup_error:
-                print(f"Error cerrando WebDriver: {cleanup_error}")
-        try:
-            chrome_service.stop()
-        except Exception as cleanup_error:
-            print(f"Error deteniendo ChromeDriver: {cleanup_error}")
-        shutil.rmtree(profile_dir, ignore_errors=True)
+        _cleanup_driver(driver, chrome_service, profile_dir)
 
 @app.post("/api/predict")
 def predict_match(data: DatosPrediccion):
@@ -601,13 +632,19 @@ def stats_endpoint(url: str = Query(..., description="URL de Scores")):
     """
     Recibe la URL de un partido y devuelve un JSON con las estadísticas.
     """
-    # El semáforo asegura que solo N hilos entren aquí a la vez, el resto espera
-    with scraper_semaphore:
-        try:
-            data = get_match_stats(url)
-            return data
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+    # Evita que las solicitudes se acumulen indefinidamente si un scraper falla.
+    if not scraper_semaphore.acquire(timeout=SCRAPER_QUEUE_TIMEOUT):
+        raise HTTPException(
+            status_code=503,
+            detail="Demasiadas solicitudes de scraping activas. Intenta nuevamente en unos segundos.",
+        )
+
+    try:
+        return get_match_stats(url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        scraper_semaphore.release()
 
 @app.get("/health")
 def health():
