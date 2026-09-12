@@ -27,6 +27,7 @@ app = FastAPI(title="Soccer Scraper API")
 # Limitar el número de navegadores abiertos simultáneamente (ajusta según tu RAM)
 MAX_CONCURRENT_SCRAPERS = 1
 SCRAPER_QUEUE_TIMEOUT = 30
+SCRAPER_TIMEOUT_SECONDS = 55
 scraper_semaphore = Semaphore(MAX_CONCURRENT_SCRAPERS)
 
 # Modelos de datos para la predicción
@@ -107,6 +108,14 @@ def _cleanup_driver(driver, chrome_service, profile_dir):
             time.sleep(0.5)
 
 def get_match_stats(url: str):
+    started_at = time.monotonic()
+
+    def remaining_timeout(maximum: int) -> int:
+        remaining = SCRAPER_TIMEOUT_SECONDS - (time.monotonic() - started_at)
+        if remaining <= 0:
+            raise TimeoutError("El scraping excedió el tiempo máximo permitido.")
+        return max(1, min(maximum, int(remaining)))
+
     chrome_options = Options()
     profile_dir = tempfile.mkdtemp(prefix="scraper-chrome-")
     chrome_options.add_argument(f"--user-data-dir={profile_dir}")
@@ -138,24 +147,33 @@ def get_match_stats(url: str):
         driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
             
         # Esperamos la carga completa del documento y del contenido inicial.
-        driver.set_page_load_timeout(40) # Máximo 40 segundos para cargar la URL
-        driver.set_script_timeout(25)
+        driver.set_page_load_timeout(25)
+        driver.set_script_timeout(10)
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         driver.get(url)
-        wait = WebDriverWait(driver, 40)
-        wait.until(lambda current_driver: current_driver.execute_script(
-            "return document.readyState"
-        ) == "complete")
-        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        WebDriverWait(driver, remaining_timeout(15)).until(
+            lambda current_driver: current_driver.execute_script(
+                "return document.readyState"
+            ) == "complete"
+        )
+        WebDriverWait(driver, remaining_timeout(10)).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
         
         # Intentar hacer clic en la pestaña "Estadísticas"
         try:
             # Buscamos de forma más flexible y esperamos a que sea clickable
             xpath_stats = "//div[contains(., 'Estadísticas')] | //span[contains(., 'Estadísticas')] | //a[contains(., 'Estadísticas')]"
-            boton_stats = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_stats)))
+            boton_stats = WebDriverWait(driver, remaining_timeout(15)).until(
+                EC.element_to_be_clickable((By.XPATH, xpath_stats))
+            )
             driver.execute_script("arguments[0].click();", boton_stats)
             # En lugar de sleep fijo, esperamos a que aparezca un elemento clave de las estadísticas
-            wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(., 'Grandes chances')] | //div[contains(., 'Faltas')]")))
+            WebDriverWait(driver, remaining_timeout(15)).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "//div[contains(., 'Grandes chances')] | //div[contains(., 'Faltas')]")
+                )
+            )
         except Exception:
             print("No se pudo hacer clic en la pestaña de estadísticas o no cargó a tiempo.")
             raise Exception("No se pudo acceder a las estadísticas. Abortando para evitar bloqueo del sistema.")
