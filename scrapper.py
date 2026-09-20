@@ -21,7 +21,7 @@ from scipy.stats import poisson
 from threading import Semaphore, Thread
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -704,6 +704,15 @@ def get_json_match_stats(games: str = Query(..., description="ID del partido")):
             local["score"] = game.get("homeCompetitor", {}).get("score")
             visita["score"] = game.get("awayCompetitor", {}).get("score")
 
+            fechaCompleta = game.get("startTime")
+            fecha = None
+            hora = None
+
+            if fechaCompleta:
+                fecha_ajustada = datetime.fromisoformat(fechaCompleta) - timedelta(hours=5)
+                fecha = fecha_ajustada.date().isoformat()
+                hora = fecha_ajustada.time().isoformat()
+
             statistic_fields = {
                 "Posesión": "posesion",
                 "Goles esperados": "goles_esperados",
@@ -739,6 +748,10 @@ def get_json_match_stats(games: str = Query(..., description="ID del partido")):
             result = {}
             result["local"] = local
             result["visita"] = visita
+            result["fecha"] = fecha
+            result["hora"] = hora
+            result["estadio"] = game.get("venue", {}).get("name")
+
             return result
     except HTTPError as error:
         raise HTTPException(
