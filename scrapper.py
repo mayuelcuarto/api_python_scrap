@@ -664,6 +664,11 @@ def stats_endpoint(url: str = Query(..., description="URL de Scores")):
     finally:
         scraper_semaphore.release()
 
+@app.get("/api/jsonScrap")
+def get_json_match_stats():
+    results = {}
+    return results
+
 @app.get("/health")
 def health():
     return {"status": "alive"}
