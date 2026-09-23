@@ -730,6 +730,10 @@ def get_json_match_stats(games: str = Query(..., description="ID del partido")):
                 "Pases en el campo contrario" : "pases_en_el_campo_contrario"
             }
 
+            for field_name in statistic_fields.values():
+                local[field_name] = "-1"
+                visita[field_name] = "-1"
+
             for statistic in jsonResult.get("statistics", []):
                 field_name = statistic_fields.get(statistic.get("name"))
                 if field_name is None:
